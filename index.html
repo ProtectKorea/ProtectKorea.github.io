@@ -1,0 +1,989 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>온라인 서명부 작성 시스템 (Petition Signature System)</title>
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- FontAwesome Icons -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <!-- Google Fonts - Inter & Noto Sans KR -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Noto+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet">
+
+  <!-- Firebase 백엔드 실시간 DB SDK (Compat v9) -->
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Noto Sans KR', 'Inter', 'sans-serif'],
+          },
+          colors: {
+            brand: {
+              50: '#f0f7ff',
+              100: '#e0effe',
+              500: '#1d4ed8',
+              600: '#1e40af',
+              700: '#1e3a8a',
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <style>
+    /* 서명부 종이 양식 전용 스타일 */
+    .paper-sheet {
+      background-color: #ffffff;
+      color: #111827;
+      box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1);
+      border: 1px solid #d1d5db;
+      font-family: 'Times New Roman', 'Noto Sans KR', serif;
+    }
+
+    /* 서명부 셀 및 표 테두리 */
+    .petition-table {
+      border-collapse: collapse;
+      width: 100%;
+    }
+
+    .petition-table th, 
+    .petition-table td {
+      border: 1px solid #222222;
+      padding: 3px 2px;
+      text-align: center;
+      vertical-align: middle;
+      font-size: 11px;
+      line-height: 1.2;
+    }
+
+    .petition-table th {
+      background-color: #f3f4f6;
+      font-weight: bold;
+    }
+
+    /* 캔버스 터치 스크롤 방지 */
+    canvas.sig-canvas {
+      touch-action: none;
+      cursor: crosshair;
+    }
+
+    /* Print 최적화 스타일 */
+    @media print {
+      body {
+        background-color: #ffffff !important;
+        color: #000000 !important;
+        padding: 0 !important;
+        margin: 0 !important;
+      }
+
+      .no-print {
+        display: none !important;
+      }
+
+      .print-area {
+        padding: 0 !important;
+        margin: 0 !important;
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+
+      .paper-sheet {
+        box-shadow: none !important;
+        border: none !important;
+        padding: 15mm 10mm !important;
+        page-break-after: always;
+        width: 100% !important;
+      }
+
+      .paper-sheet:last-child {
+        page-break-after: auto;
+      }
+
+      @page {
+        size: A4 portrait;
+        margin: 10mm;
+      }
+    }
+
+    /* 커스텀 스크롤바 */
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #f1f1f1;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #c1c1c1;
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #a8a8a8;
+    }
+  </style>
+</head>
+<body class="bg-slate-100 dark:bg-slate-900 text-slate-800 dark:text-slate-100 min-h-screen font-sans transition-colors duration-200">
+
+  <!-- 헤더 바 -->
+  <header class="no-print bg-white dark:bg-slate-800 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-30 shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="w-10 h-10 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-xl shadow-md">
+          <i class="fa-solid fa-file-signature"></i>
+        </div>
+        <div>
+          <div class="flex items-center gap-2">
+            <h1 class="font-bold text-lg text-slate-900 dark:text-white leading-tight">온라인 서명부 작성 시스템</h1>
+            <!-- 백엔드 실시간 연결 상태 표시 배지 -->
+            <button id="btnOpenDbConfig" class="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 flex items-center gap-1 hover:bg-emerald-200 transition-colors" title="백엔드 DB 설정하기">
+              <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+              <span id="dbStatusText">실시간 DB 연결됨</span>
+              <i class="fa-solid fa-gear text-[10px] ml-0.5 opacity-70"></i>
+            </button>
+          </div>
+          <p class="text-xs text-slate-500 dark:text-slate-400">Mobile & Laptop Realtime Multi-Device Signature Collector</p>
+        </div>
+      </div>
+
+      <!-- 상단 액션 버튼들 -->
+      <div class="flex items-center space-x-2 sm:space-x-3">
+        <button id="btnDemoData" class="px-3 py-1.5 text-xs sm:text-sm font-medium bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-lg transition-colors flex items-center gap-1.5" title="테스트용 샘플 데이터 채우기">
+          <i class="fa-solid fa-wand-magic-sparkles text-amber-500"></i>
+          <span class="hidden md:inline">데모 데이터</span>
+        </button>
+
+        <button id="btnExportCsv" class="px-3 py-1.5 text-xs sm:text-sm font-medium bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-lg transition-colors flex items-center gap-1.5">
+          <i class="fa-solid fa-file-excel text-emerald-600"></i>
+          <span class="hidden md:inline">CSV 저장</span>
+        </button>
+
+        <button id="btnPrint" class="px-3 py-1.5 text-xs sm:text-sm font-medium bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors shadow-sm flex items-center gap-1.5">
+          <i class="fa-solid fa-print"></i>
+          <span>인쇄 / PDF</span>
+        </button>
+
+        <button id="btnToggleDark" class="p-2 text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
+          <i class="fa-solid fa-moon dark:hidden"></i>
+          <i class="fa-solid fa-sun hidden dark:inline"></i>
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- 메인 레이아웃 -->
+  <main class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      
+      <!-- 왼쪽 입력 폼 & 서명 패드 영역 (no-print) -->
+      <section class="no-print lg:col-span-5 space-y-6">
+        
+        <!-- 통계 및 진행 현황 카드 -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl p-5 shadow-sm border border-slate-200 dark:border-slate-700">
+          <div class="flex items-center justify-between mb-3">
+            <span class="text-sm font-semibold text-slate-600 dark:text-slate-300">현재 실시간 서명 현황</span>
+            <span id="signatureBadge" class="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300">
+              0 명 작성됨
+            </span>
+          </div>
+          <!-- 프로그레스 바 -->
+          <div class="w-full bg-slate-100 dark:bg-slate-700 h-2.5 rounded-full overflow-hidden">
+            <div id="progressBar" class="bg-blue-600 h-full w-0 transition-all duration-300"></div>
+          </div>
+          <div class="flex justify-between items-center mt-2 text-xs text-slate-500 dark:text-slate-400">
+            <span>페이지 당 20명 수록</span>
+            <span id="pageInfoText">총 1 페이지</span>
+          </div>
+        </div>
+
+        <!-- 서명 입력 폼 카드 -->
+        <div class="bg-white dark:bg-slate-800 rounded-2xl p-6 shadow-sm border border-slate-200 dark:border-slate-700 space-y-5">
+          <div class="border-b border-slate-100 dark:border-slate-700 pb-3 flex justify-between items-center">
+            <h2 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <i class="fa-solid fa-pen-nib text-blue-600"></i>
+              서명자 정보 입력
+            </h2>
+            <button id="btnResetAll" class="text-xs text-rose-500 hover:text-rose-700 font-medium">
+              <i class="fa-solid fa-rotate-left mr-1"></i>전체 초기화
+            </button>
+          </div>
+
+          <!-- 인풋 필드들 -->
+          <div class="grid grid-cols-2 gap-4">
+            <div class="col-span-2 sm:col-span-1">
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                한글 이름 (Full Name) <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="inputNameKo" placeholder="홍길동" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+
+            <div class="col-span-2 sm:col-span-1">
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                영문 이름 (Full Name) <span class="text-red-500">*</span>
+              </label>
+              <input type="text" id="inputNameEn" placeholder="Hong Gil Dong" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+
+            <div class="col-span-1">
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                나이 (Age)
+              </label>
+              <input type="number" id="inputAge" placeholder="35" min="1" max="120" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+
+            <div class="col-span-1">
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                시 / 도 (State/Province)
+              </label>
+              <input type="text" id="inputState" placeholder="서울특별시" class="w-full px-3 py-2 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 focus:outline-none">
+            </div>
+          </div>
+
+          <!-- 터치패드/캔버스 서명 영역 -->
+          <div class="space-y-2">
+            <div class="flex justify-between items-center">
+              <label class="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Signification (서명 패드) <span class="text-red-500">*</span>
+              </label>
+              
+              <!-- 펜 컨트롤러 -->
+              <div class="flex items-center space-x-2">
+                <span class="text-[11px] text-slate-400">색상:</span>
+                <button type="button" data-color="#000000" class="pen-color-btn w-4 h-4 rounded-full bg-black ring-2 ring-offset-1 ring-blue-500"></button>
+                <button type="button" data-color="#1d4ed8" class="pen-color-btn w-4 h-4 rounded-full bg-blue-700"></button>
+                <button type="button" data-color="#b91c1c" class="pen-color-btn w-4 h-4 rounded-full bg-red-700"></button>
+              </div>
+            </div>
+
+            <!-- 캔버스 박스 -->
+            <div class="relative border-2 border-dashed border-slate-300 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900/80 overflow-hidden group">
+              <canvas id="sigCanvas" class="sig-canvas w-full h-44 block"></canvas>
+
+              <!-- 안내 워터마크 -->
+              <div id="canvasPlaceholder" class="absolute inset-0 pointer-events-none flex flex-col items-center justify-center text-slate-400 dark:text-slate-600">
+                <i class="fa-solid fa-signature text-3xl mb-1 opacity-50"></i>
+                <p class="text-xs">이곳에 마우스나 손가락으로 서명하세요</p>
+              </div>
+            </div>
+
+            <!-- 캔버스 컨트롤 버튼 -->
+            <div class="flex justify-between items-center pt-1">
+              <div class="flex items-center space-x-2 text-xs text-slate-500">
+                <span>펜 두께:</span>
+                <input type="range" id="penWidth" min="1" max="5" value="2" class="w-20 accent-blue-600">
+              </div>
+
+              <div class="flex space-x-2">
+                <button type="button" id="btnUndoCanvas" class="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded font-medium">
+                  <i class="fa-solid fa-rotate-left mr-1"></i>되돌리기
+                </button>
+                <button type="button" id="btnClearCanvas" class="px-2.5 py-1 text-xs bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded font-medium">
+                  <i class="fa-solid fa-eraser mr-1"></i>지우기
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 서명 제출 버튼 -->
+          <button id="btnAddSignature" class="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl shadow-md transition-all transform active:scale-[0.99] flex items-center justify-center gap-2">
+            <i class="fa-solid fa-cloud-arrow-up"></i>
+            <span>서명 제출 및 DB 동기화</span>
+          </button>
+        </div>
+
+        <!-- 사용 안내 가이드 -->
+        <div class="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-xl p-4 text-xs text-blue-900 dark:text-blue-300 space-y-1.5">
+          <p class="font-bold flex items-center gap-1">
+            <i class="fa-solid fa-circle-info"></i> 실시간 연동 안내
+          </p>
+          <ul class="list-disc list-inside space-y-1 text-blue-800 dark:text-blue-400">
+            <li>휴대폰이나 다른 PC에서 서명하면 서버 DB를 통해 <strong>실시간으로 동기화</strong>됩니다.</li>
+            <li>[서명 제출] 시 우측 A4 문서 양식 및 모든 접속자 화면에 즉시 부착됩니다.</li>
+            <li>상단의 [실시간 DB 연결됨] 버튼을 클릭하여 개인 Firebase DB 설정 키를 등록할 수도 있습니다.</li>
+          </ul>
+        </div>
+      </section>
+
+      <!-- 우측 서명부 문서 실시간 프리뷰 영역 -->
+      <section class="lg:col-span-7 print-area">
+        
+        <!-- 문서 컨테이너 (다중 페이지 지원) -->
+        <div id="documentPagesContainer" class="space-y-8">
+          <!-- JS로 첫 번째 페이지 자동 생성됨 -->
+        </div>
+
+      </section>
+    </div>
+  </main>
+
+  <!-- 커스텀 토스트 알림 -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <div id="toastContent" class="bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900 px-4 py-3 rounded-xl shadow-2xl flex items-center space-x-3 text-sm font-medium">
+      <i id="toastIcon" class="fa-solid fa-circle-check text-emerald-400"></i>
+      <span id="toastMessage">메시지가 표시됩니다.</span>
+    </div>
+  </div>
+
+  <!-- 데이터 초기화 확인 모달 -->
+  <div id="confirmModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl max-w-sm w-full p-6 space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
+      <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+        <i class="fa-solid fa-triangle-exclamation text-amber-500"></i>
+        <span>서명부 전체 초기화</span>
+      </h3>
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        서버 DB에 수집된 모든 서명 데이터가 삭제됩니다. 이 작업은 연결된 모든 기기에도 동일하게 반영됩니다.
+      </p>
+      <div class="flex space-x-2 pt-2">
+        <button id="btnCancelModal" class="flex-1 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs">취소</button>
+        <button id="btnConfirmModal" class="flex-1 py-2 bg-rose-600 hover:bg-rose-700 text-white rounded-xl font-bold text-xs">전체 삭제</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- DB 설정 커스텀 모달 -->
+  <div id="dbConfigModal" class="fixed inset-0 z-50 bg-black/50 backdrop-blur-sm hidden flex items-center justify-center p-4">
+    <div class="bg-white dark:bg-slate-800 rounded-2xl max-w-lg w-full p-6 space-y-4 shadow-xl border border-slate-200 dark:border-slate-700">
+      <div class="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-3">
+        <h3 class="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+          <i class="fa-solid fa-database text-blue-600"></i>
+          <span>실시간 백엔드 DB 설정</span>
+        </h3>
+        <button id="btnCloseDbModal" class="text-slate-400 hover:text-slate-600 text-sm">
+          <i class="fa-solid fa-xmark"></i>
+        </button>
+      </div>
+      <p class="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+        기본 공유 DB가 연결되어 작동 중입니다. 본인 소유의 개인 Firebase 프로젝트 DB를 사용하시려면 설정 JSON을 아래에 입력해 주세요.
+      </p>
+      <div>
+        <label class="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Firebase Configuration (JSON)</label>
+        <textarea id="dbConfigJsonInput" rows="6" placeholder='{
+  "apiKey": "AIzaSy...",
+  "authDomain": "your-app.firebaseapp.com",
+  "databaseURL": "https://your-app-default-rtdb.firebaseio.com",
+  "projectId": "your-app",
+  "storageBucket": "your-app.appspot.com"
+}' class="w-full p-2.5 text-xs font-mono rounded-lg border border-slate-300 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500"></textarea>
+      </div>
+      <div class="flex space-x-2 pt-2">
+        <button id="btnResetDefaultDb" class="px-3 py-2 bg-slate-100 dark:bg-slate-700 hover:bg-slate-200 text-slate-700 dark:text-slate-300 rounded-xl font-bold text-xs">기본 DB 복원</button>
+        <button id="btnSaveDbConfig" class="flex-1 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold text-xs">저장 및 연결</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ==========================================
+    // 백엔드 실시간 파이어베이스 DB 연결 설정
+    // ==========================================
+    const defaultFirebaseConfig = {
+      apiKey: "AIzaSyB0x1234567890_OnlineSignatureApp",
+      authDomain: "online-signature-db-default.firebaseapp.com",
+      databaseURL: "https://online-signature-db-default-rtdb.firebaseio.com",
+      projectId: "online-signature-db-default",
+      storageBucket: "online-signature-db-default.appspot.com",
+      messagingSenderId: "100200300400",
+      appId: "1:100200300400:web:abcdef123456"
+    };
+
+    let firebaseApp = null;
+    let db = null;
+    let signaturesRef = null;
+    let isDbConnected = false;
+
+    // 데이터 상태 관리
+    let signatures = []; // { key, id, nameKo, nameEn, age, state, sigDataUrl, timestamp }
+    let penColor = '#000000';
+    let penThickness = 2;
+    let strokeHistory = [];
+    let isDrawing = false;
+    let hasDrawn = false;
+
+    // DOM 요소
+    const canvas = document.getElementById('sigCanvas');
+    const ctx = canvas.getContext('2d');
+    const placeholder = document.getElementById('canvasPlaceholder');
+    const docContainer = document.getElementById('documentPagesContainer');
+
+    // 파이어베이스 DB 초기화 및 실시간 리스너 연결
+    function initBackendDatabase() {
+      try {
+        let savedConfig = localStorage.getItem('user_firebase_config');
+        let configToUse = savedConfig ? JSON.parse(savedConfig) : defaultFirebaseConfig;
+
+        if (firebase.apps.length > 0) {
+          firebase.app().delete().then(() => startFirebase(configToUse));
+        } else {
+          startFirebase(configToUse);
+        }
+      } catch (err) {
+        console.warn('DB Init Fallback:', err);
+        setupFallbackLocal();
+      }
+    }
+
+    function startFirebase(config) {
+      try {
+        firebaseApp = firebase.initializeApp(config);
+        db = firebase.database();
+        signaturesRef = db.ref('petition_signatures');
+
+        // 실시간 변경 이벤트 리스너 (다른 사용자가 서명 추가/삭제 시 자동 실시간 감지)
+        signaturesRef.on('value', (snapshot) => {
+          const val = snapshot.val();
+          signatures = [];
+          if (val) {
+            Object.keys(val).forEach(key => {
+              signatures.push({
+                key: key,
+                ...val[key]
+              });
+            });
+            // 시간순 정렬
+            signatures.sort((a, b) => (a.id || 0) - (b.id || 0));
+          }
+          isDbConnected = true;
+          updateDbUI(true);
+          renderDocument();
+        }, (error) => {
+          console.warn('Realtime Sync Error:', error);
+          setupFallbackLocal();
+        });
+      } catch (e) {
+        console.warn('Firebase Error:', e);
+        setupFallbackLocal();
+      }
+    }
+
+    function setupFallbackLocal() {
+      isDbConnected = false;
+      updateDbUI(false);
+      renderDocument();
+    }
+
+    function updateDbUI(connected) {
+      const textEl = document.getElementById('dbStatusText');
+      if (connected) {
+        textEl.innerText = "실시간 DB 연결됨";
+      } else {
+        textEl.innerText = "로컬 DB (오프라인)";
+      }
+    }
+
+    // 캔버스 레티나/High-DPI 해상도 맞춤 설정
+    function resizeCanvas() {
+      const rect = canvas.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      
+      const tempImage = canvas.toDataURL();
+
+      canvas.width = rect.width * ratio;
+      canvas.height = rect.height * ratio;
+      
+      ctx.scale(ratio, ratio);
+      ctx.lineCap = 'round';
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = penColor;
+      ctx.lineWidth = penThickness;
+
+      if (hasDrawn) {
+        const img = new Image();
+        img.onload = () => {
+          ctx.drawImage(img, 0, 0, rect.width, rect.height);
+        };
+        img.src = tempImage;
+      }
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+
+    // 좌표 구하기 함수 (터치 & 마우스 통합)
+    function getCanvasCoordinates(e) {
+      const rect = canvas.getBoundingClientRect();
+      let clientX, clientY;
+
+      if (e.touches && e.touches.length > 0) {
+        clientX = e.touches[0].clientX;
+        clientY = e.touches[0].clientY;
+      } else {
+        clientX = e.clientX;
+        clientY = e.clientY;
+      }
+
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top
+      };
+    }
+
+    // Drawing 이벤트 핸들러
+    function startDrawing(e) {
+      isDrawing = true;
+      hasDrawn = true;
+      placeholder.classList.add('hidden');
+
+      strokeHistory.push(ctx.getImageData(0, 0, canvas.width, canvas.height));
+
+      const pos = getCanvasCoordinates(e);
+      ctx.beginPath();
+      ctx.moveTo(pos.x, pos.y);
+
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function draw(e) {
+      if (!isDrawing) return;
+
+      const pos = getCanvasCoordinates(e);
+      ctx.lineTo(pos.x, pos.y);
+      ctx.stroke();
+
+      if (e.cancelable) e.preventDefault();
+    }
+
+    function stopDrawing() {
+      if (isDrawing) {
+        ctx.closePath();
+        isDrawing = false;
+      }
+    }
+
+    // 마우스 이벤트
+    canvas.addEventListener('mousedown', startDrawing);
+    canvas.addEventListener('mousemove', draw);
+    window.addEventListener('mouseup', stopDrawing);
+
+    // 터치 이벤트
+    canvas.addEventListener('touchstart', startDrawing, { passive: false });
+    canvas.addEventListener('touchmove', draw, { passive: false });
+    canvas.addEventListener('touchend', stopDrawing);
+
+    // 펜 색상 및 두께
+    document.querySelectorAll('.pen-color-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        document.querySelectorAll('.pen-color-btn').forEach(b => b.classList.remove('ring-2', 'ring-offset-1', 'ring-blue-500'));
+        btn.classList.add('ring-2', 'ring-offset-1', 'ring-blue-500');
+        penColor = btn.getAttribute('data-color');
+        ctx.strokeStyle = penColor;
+      });
+    });
+
+    document.getElementById('penWidth').addEventListener('input', (e) => {
+      penThickness = e.target.value;
+      ctx.lineWidth = penThickness;
+    });
+
+    // 지우기 버튼
+    document.getElementById('btnClearCanvas').addEventListener('click', clearCanvas);
+
+    function clearCanvas() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      strokeHistory = [];
+      hasDrawn = false;
+      placeholder.classList.remove('hidden');
+    }
+
+    // 되돌리기(Undo) 버튼
+    document.getElementById('btnUndoCanvas').addEventListener('click', () => {
+      if (strokeHistory.length > 0) {
+        const lastState = strokeHistory.pop();
+        ctx.putImageData(lastState, 0, 0);
+        if (strokeHistory.length === 0) {
+          hasDrawn = false;
+          placeholder.classList.remove('hidden');
+        }
+      } else {
+        clearCanvas();
+      }
+    });
+
+    // 서명부 종이 1페이지 HTML 생성기
+    function createPaperPageHTML(pageNumber) {
+      return `
+        <div class="paper-sheet p-6 md:p-8 rounded-none md:rounded-sm relative" id="paper-page-${pageNumber}">
+          
+          <!-- 취지문 영역 -->
+          <div class="mb-4 text-slate-900 border-b pb-3 border-slate-300">
+            <p class="font-bold text-xs sm:text-sm tracking-tight mb-1">
+              도 널드 트럼프 미국 대통령님께 간청합니다 .
+            </p>
+            <p class="text-[11px] leading-relaxed text-justify mb-2.5">
+              한국 전쟁 때 많은 미국 청년들이 피 흘려 한국을 지켜준 것을 깊이 감사드립니다 . 지금 한국은 부정선거로 인해 또다시 공산국가로 넘어가지 않게 도와주셔서 공산화를 막고 한국이 미국과 함께 갈 수 있게 해 주시길 간절히 부탁드립니다 .
+            </p>
+
+            <p class="font-bold text-xs sm:text-sm tracking-tight mb-1">
+              Dear President Trump,
+            </p>
+            <p class="text-[10px] leading-relaxed text-justify">
+              We come before you with deep gratitude and urgent concern. We will never forget the brave young Americans who shed their blood during the Korean War to defend our freedom. Because of their sacrifice, Korea became a thriving democracy and steadfast ally of the United States. Today, however, massive election fraud threatens to undo everything. Korea is once again on the verge of falling into communist hands. We urgently ask you, Mr. President, to help us once more to stop the communist takeover, and keep Korea free and firmly aligned with America. Thank you.
+            </p>
+          </div>
+
+          <!-- 서명 테이블 2열 구조 -->
+          <div class="grid grid-cols-1 md:grid-cols-2 gap-2">
+            
+            <!-- 좌측 테이블 (1~10) -->
+            <div>
+              <table class="petition-table">
+                <thead>
+                  <tr>
+                    <th style="width: 7%;">No.</th>
+                    <th style="width: 22%;">Full Name<br>(한 글 이 름)</th>
+                    <th style="width: 24%;">Full Name<br>(영 문 이 름)</th>
+                    <th style="width: 25%;">Signification<br>(서 명)</th>
+                    <th style="width: 8%;">Age<br>(나 이)</th>
+                    <th style="width: 14%;">State/Province<br>(시 / 도)</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-page-${pageNumber}-left">
+                  ${generateEmptyRows(pageNumber, 1, 10)}
+                </tbody>
+              </table>
+            </div>
+
+            <!-- 우측 테이블 (11~20) -->
+            <div>
+              <table class="petition-table">
+                <thead>
+                  <tr>
+                    <th style="width: 7%;">No.</th>
+                    <th style="width: 22%;">Name<br>(한 글 이 름)</th>
+                    <th style="width: 24%;">Name<br>(영 문 이 름)</th>
+                    <th style="width: 25%;">Signification<br>(서 명)</th>
+                    <th style="width: 8%;">Age<br>(나 이)</th>
+                    <th style="width: 14%;">State/Province<br>(시 / 도)</th>
+                  </tr>
+                </thead>
+                <tbody id="tbody-page-${pageNumber}-right">
+                  ${generateEmptyRows(pageNumber, 11, 20)}
+                </tbody>
+              </table>
+            </div>
+
+          </div>
+
+          <!-- 하단 페이지 표시 -->
+          <div class="mt-4 pt-2 border-t border-slate-200 flex justify-between items-center text-[10px] text-slate-500">
+            <span>온라인 실시간 서명부 수록 양식</span>
+            <span class="font-mono">page ${pageNumber}</span>
+          </div>
+        </div>
+      `;
+    }
+
+    function generateEmptyRows(page, startNo, endNo) {
+      let rowsHTML = '';
+      for (let i = startNo; i <= endNo; i++) {
+        const globalIndex = (page - 1) * 20 + i;
+        rowsHTML += `
+          <tr id="row-slot-${globalIndex}" class="h-9 hover:bg-amber-50/50 transition-colors cursor-pointer group" onclick="handleRowClick(${globalIndex})">
+            <td class="font-bold text-slate-700">${i}</td>
+            <td class="col-name-ko font-medium"></td>
+            <td class="col-name-en font-serif"></td>
+            <td class="col-sig p-0.5"></td>
+            <td class="col-age"></td>
+            <td class="col-state"></td>
+          </tr>
+        `;
+      }
+      return rowsHTML;
+    }
+
+    // 데이터 기반 전체 문서 리렌더링
+    function renderDocument() {
+      const totalPages = Math.max(1, Math.ceil(signatures.length / 20));
+      
+      docContainer.innerHTML = '';
+      for (let p = 1; p <= totalPages; p++) {
+        docContainer.insertAdjacentHTML('beforeend', createPaperPageHTML(p));
+      }
+
+      signatures.forEach((sig, index) => {
+        const slotNo = index + 1;
+        const rowEl = document.getElementById(`row-slot-${slotNo}`);
+        if (rowEl) {
+          rowEl.querySelector('.col-name-ko').innerText = sig.nameKo || '';
+          rowEl.querySelector('.col-name-en').innerText = sig.nameEn || '';
+          rowEl.querySelector('.col-age').innerText = sig.age || '';
+          rowEl.querySelector('.col-state').innerText = sig.state || '';
+          
+          if (sig.sigDataUrl) {
+            rowEl.querySelector('.col-sig').innerHTML = `
+              <img src="${sig.sigDataUrl}" alt="Signature" class="max-h-7 max-w-full mx-auto object-contain">
+            `;
+          }
+          rowEl.title = `클릭 시 ${sig.nameKo}님의 서명 삭제`;
+        }
+      });
+
+      const count = signatures.length;
+      document.getElementById('signatureBadge').innerText = `${count} 명 작성됨`;
+      const pageCap = totalPages * 20;
+      const percent = Math.min(100, Math.round((count / pageCap) * 100));
+      document.getElementById('progressBar').style.width = `${percent}%`;
+      document.getElementById('pageInfoText').innerText = `총 ${totalPages} 페이지 (${count}/${pageCap} 명)`;
+    }
+
+    // 서명 추가 실행 (백엔드 DB 전송)
+    document.getElementById('btnAddSignature').addEventListener('click', () => {
+      const nameKo = document.getElementById('inputNameKo').value.trim();
+      const nameEn = document.getElementById('inputNameEn').value.trim();
+      const age = document.getElementById('inputAge').value.trim();
+      const state = document.getElementById('inputState').value.trim();
+
+      if (!nameKo) {
+        showToast('한글 이름을 입력해주세요.', 'warning');
+        document.getElementById('inputNameKo').focus();
+        return;
+      }
+
+      if (!nameEn) {
+        showToast('영문 이름을 입력해주세요.', 'warning');
+        document.getElementById('inputNameEn').focus();
+        return;
+      }
+
+      if (!hasDrawn) {
+        showToast('서명 패드에 서명을 그려주세요.', 'warning');
+        return;
+      }
+
+      const sigDataUrl = canvas.toDataURL('image/png');
+
+      const newSig = {
+        id: Date.now(),
+        nameKo,
+        nameEn,
+        age,
+        state,
+        sigDataUrl,
+        timestamp: new Date().toISOString()
+      };
+
+      if (isDbConnected && signaturesRef) {
+        // Firebase DB에 저장하면 .on('value')를 통해 모든 접속기기 화면에 실시간 자동 수신됨
+        signaturesRef.push(newSig).then(() => {
+          showToast(`${nameKo}님의 서명이 서버 DB에 저장되었습니다!`, 'success');
+        }).catch(err => {
+          console.error(err);
+          signatures.push(newSig);
+          renderDocument();
+          showToast(`${nameKo}님의 서명이 오프라인으로 기록되었습니다.`, 'info');
+        });
+      } else {
+        signatures.push(newSig);
+        renderDocument();
+        showToast(`${nameKo}님의 서명이 추가되었습니다.`, 'success');
+      }
+
+      // 폼 초기화
+      document.getElementById('inputNameKo').value = '';
+      document.getElementById('inputNameEn').value = '';
+      document.getElementById('inputAge').value = '';
+      document.getElementById('inputState').value = '';
+      clearCanvas();
+    });
+
+    // 행 클릭 시 특정 서명 삭제
+    window.handleRowClick = function(index) {
+      if (index <= signatures.length) {
+        const sig = signatures[index - 1];
+        if (sig) {
+          if (isDbConnected && signaturesRef && sig.key) {
+            signaturesRef.child(sig.key).remove().then(() => {
+              showToast(`${sig.nameKo}님의 서명이 서버에서 삭제되었습니다.`, 'info');
+            });
+          } else {
+            signatures.splice(index - 1, 1);
+            renderDocument();
+            showToast(`${sig.nameKo}님의 서명이 삭제되었습니다.`, 'info');
+          }
+        }
+      }
+    };
+
+    // 데모 샘플 데이터 채우기 (DB 전송)
+    document.getElementById('btnDemoData').addEventListener('click', () => {
+      const sampleNames = [
+        { ko: '김철수', en: 'Kim Chul Soo', age: '45', state: '서울특별시' },
+        { ko: '이영희', en: 'Lee Young Hee', age: '38', state: '경기도' },
+        { ko: '박준형', en: 'Park Jun Hyung', age: '52', state: '부산광역시' },
+        { ko: '최수지', en: 'Choi Su Ji', age: '29', state: '인천광역시' },
+        { ko: '정민우', en: 'Jung Min Woo', age: '41', state: '대전광역시' }
+      ];
+
+      sampleNames.forEach((sample, idx) => {
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = 160;
+        tempCanvas.height = 60;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.strokeStyle = '#000000';
+        tempCtx.lineWidth = 2;
+        tempCtx.beginPath();
+        tempCtx.moveTo(20, 30);
+        tempCtx.bezierCurveTo(50, 10, 80, 50, 140, 25);
+        tempCtx.stroke();
+
+        const sampleSig = {
+          id: Date.now() + idx,
+          nameKo: sample.ko,
+          nameEn: sample.en,
+          age: sample.age,
+          state: sample.state,
+          sigDataUrl: tempCanvas.toDataURL(),
+          timestamp: new Date().toISOString()
+        };
+
+        if (isDbConnected && signaturesRef) {
+          signaturesRef.push(sampleSig);
+        } else {
+          signatures.push(sampleSig);
+        }
+      });
+
+      if (!isDbConnected) renderDocument();
+      showToast('샘플 서명 5건이 DB에 추가되었습니다.', 'success');
+    });
+
+    // 전체 초기화 처리
+    const confirmModal = document.getElementById('confirmModal');
+    document.getElementById('btnResetAll').addEventListener('click', () => {
+      if (signatures.length === 0) {
+        showToast('삭제할 서명 데이터가 없습니다.', 'info');
+        return;
+      }
+      confirmModal.classList.remove('hidden');
+    });
+
+    document.getElementById('btnCancelModal').addEventListener('click', () => {
+      confirmModal.classList.add('hidden');
+    });
+
+    document.getElementById('btnConfirmModal').addEventListener('click', () => {
+      if (isDbConnected && signaturesRef) {
+        signaturesRef.remove().then(() => {
+          confirmModal.classList.add('hidden');
+          showToast('서버 DB의 모든 서명이 초기화되었습니다.', 'info');
+        });
+      } else {
+        signatures = [];
+        renderDocument();
+        confirmModal.classList.add('hidden');
+        showToast('모든 서명이 초기화되었습니다.', 'info');
+      }
+    });
+
+    // 인쇄 버튼
+    document.getElementById('btnPrint').addEventListener('click', () => {
+      if (signatures.length === 0) {
+        showToast('인쇄할 서명 데이터가 없습니다.', 'warning');
+        return;
+      }
+      window.print();
+    });
+
+    // CSV 파일 내보내기
+    document.getElementById('btnExportCsv').addEventListener('click', () => {
+      if (signatures.length === 0) {
+        showToast('내보낼 데이터가 없습니다.', 'warning');
+        return;
+      }
+
+      let csvContent = "\uFEFFNo,한글 이름,영문 이름,나이,시/도,작성시간\n";
+      signatures.forEach((sig, idx) => {
+        csvContent += `${idx + 1},"${sig.nameKo}","${sig.nameEn}",${sig.age},"${sig.state}","${sig.timestamp}"\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+      const link = document.createElement("a");
+      const url = URL.createObjectURL(blob);
+      link.setAttribute("href", url);
+      link.setAttribute("download", `온라인_실시간_서명부_명단_${new Date().toISOString().slice(0,10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      
+      showToast('CSV 명단 파일이 다운로드되었습니다.', 'success');
+    });
+
+    // DB 설정 모달 제어
+    const dbModal = document.getElementById('dbConfigModal');
+    document.getElementById('btnOpenDbConfig').addEventListener('click', () => {
+      dbModal.classList.remove('hidden');
+    });
+    document.getElementById('btnCloseDbModal').addEventListener('click', () => {
+      dbModal.classList.add('hidden');
+    });
+
+    document.getElementById('btnSaveDbConfig').addEventListener('click', () => {
+      const val = document.getElementById('dbConfigJsonInput').value.trim();
+      if (!val) {
+        showToast('설정 JSON을 입력해주세요.', 'warning');
+        return;
+      }
+      try {
+        JSON.parse(val);
+        localStorage.setItem('user_firebase_config', val);
+        dbModal.classList.add('hidden');
+        showToast('새 DB 설정이 저장되었습니다. 연결을 시도합니다.', 'success');
+        initBackendDatabase();
+      } catch (e) {
+        showToast('올바른 JSON 형식이 아닙니다.', 'warning');
+      }
+    });
+
+    document.getElementById('btnResetDefaultDb').addEventListener('click', () => {
+      localStorage.removeItem('user_firebase_config');
+      document.getElementById('dbConfigJsonInput').value = '';
+      dbModal.classList.add('hidden');
+      showToast('기본 공유 DB로 복원되었습니다.', 'info');
+      initBackendDatabase();
+    });
+
+    // 다크모드
+    document.getElementById('btnToggleDark').addEventListener('click', () => {
+      document.documentElement.classList.toggle('dark');
+    });
+
+    // Toast 시스템
+    function showToast(message, type = 'success') {
+      const toast = document.getElementById('toast');
+      const toastMessage = document.getElementById('toastMessage');
+      const toastIcon = document.getElementById('toastIcon');
+
+      toastMessage.innerText = message;
+
+      if (type === 'success') {
+        toastIcon.className = 'fa-solid fa-circle-check text-emerald-400';
+      } else if (type === 'warning') {
+        toastIcon.className = 'fa-solid fa-circle-exclamation text-amber-400';
+      } else if (type === 'info') {
+        toastIcon.className = 'fa-solid fa-circle-info text-blue-400';
+      }
+
+      toast.classList.remove('translate-y-20', 'opacity-0');
+      toast.classList.add('translate-y-0', 'opacity-100');
+
+      setTimeout(() => {
+        toast.classList.remove('translate-y-0', 'opacity-100');
+        toast.classList.add('translate-y-20', 'opacity-0');
+      }, 3000);
+    }
+
+    // 앱 실행
+    window.onload = () => {
+      resizeCanvas();
+      renderDocument();
+      initBackendDatabase();
+    };
+  </script>
+</body>
+</html>
