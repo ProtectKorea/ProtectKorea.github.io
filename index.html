@@ -330,29 +330,49 @@
             }
 
             async loadExternalData() {
+                let serverItems = [];
                 try {
                     const response = await fetch('./data/archive-data.json?t=' + new Date().getTime());
-                    if (!response.ok) throw new Error("데이터를 불러오지 못했습니다.");
-                    const data = await response.json();
-                    if (Array.isArray(data) && data.length > 0) {
-                        this.items = data.map(item => ({ ...item, likes: item.likes || 0, downloads: item.downloads || 0 }));
-                    } else {
-                        this.items = this.defaultItems;
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (Array.isArray(data)) serverItems = data;
                     }
                 } catch (e) {
-                    console.warn("외부 데이터 로드 실패, 로컬 또는 기본 데이터를 사용합니다.", e);
-                    const localSaved = localStorage.getItem('zajudan_archive_items');
-                    if (localSaved) {
-                        try {
-                            this.items = JSON.parse(localSaved);
-                        } catch(err) {
-                            this.items = this.defaultItems;
-                        }
-                    } else {
-                        this.items = this.defaultItems;
+                    console.warn("외부 데이터 로드 실패, 기본 데이터를 사용합니다.", e);
+                }
+
+                if (serverItems.length === 0) {
+                    serverItems = this.defaultItems;
+                }
+
+                // 로컬스토리지에 저장된 사용자의 좋아요/다운로드 기록 불러오기
+                const localSaved = localStorage.getItem('zajudan_archive_items');
+                let localMap = {};
+                if (localSaved) {
+                    try {
+                        const parsedLocal = JSON.parse(localSaved);
+                        parsedLocal.forEach(item => {
+                            localMap[item.id] = {
+                                likes: item.likes || 0,
+                                downloads: item.downloads || 0
+                            };
+                        });
+                    } catch(err) {
+                        console.error("로컬 데이터 파싱 실패", err);
                     }
                 }
 
+                // 서버 데이터와 로컬 카운트 병합 (서버의 최신 내용/구조를 반영하되, 카운트는 로컬에 기록된 값이 더 크면 유지)
+                this.items = serverItems.map(item => {
+                    const local = localMap[item.id];
+                    return {
+                        ...item,
+                        likes: local ? Math.max(item.likes || 0, local.likes) : (item.likes || 0),
+                        downloads: local ? Math.max(item.downloads || 0, local.downloads) : (item.downloads || 0)
+                    };
+                });
+
+                this.saveItems(); // 병합된 최신 상태를 로컬스토리지에 동기화
                 this.currentFiltered = [...this.items];
                 this.render();
                 this.renderDataRoom();
