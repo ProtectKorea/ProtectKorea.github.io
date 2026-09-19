@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>타임라인 아카이브 - 자유와국민주권수호단</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome CDN -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;700;900&family=Noto+Serif+KR:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { font-family: 'Noto Sans KR', sans-serif; background-color: #f8fafc; }
+        .serif-font { font-family: 'Noto Serif KR', serif; }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; height: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #f1f5f9; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+        .brand-title-large {
+            letter-spacing: 0.15em;
+            font-weight: 900;
+        }
+    </style>
+</head>
+<body class="min-h-screen text-slate-800 flex flex-col">
+
+    <header class="bg-slate-900 text-white shadow-md sticky top-0 z-50">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-20 flex items-center justify-between">
+            <div class="flex items-center space-x-3 cursor-pointer" onclick="location.href='https://protectkorea.github.io/index.html'">
+                <div class="bg-amber-500 text-slate-900 p-2.5 rounded-xl font-black text-xl shadow-lg flex items-center justify-center">
+                    <i class="fa-solid fa-shield-halved"></i>
+                </div>
+                <div>
+                    <h1 class="text-xl sm:text-2xl brand-title-large text-amber-400">자 주 단</h1>
+                    <p class="text-[11px] text-slate-300 font-medium tracking-wide">아카이브 시간순 타임라인 연대기</p>
+                </div>
+            </div>
+            <div class="flex items-center space-x-3">
+                <a href="https://protectkorea.github.io/index.html" class="bg-slate-800 hover:bg-slate-700 text-amber-300 border border-slate-700 px-4 py-2 rounded-xl text-xs font-bold flex items-center space-x-2 transition">
+                    <i class="fa-solid fa-house"></i>
+                    <span>메인 아카이브로</span>
+                </a>
+            </div>
+        </div>
+        <div class="bg-amber-500 text-slate-950 py-1.5 px-4 text-center text-xs sm:text-sm font-bold shadow-inner flex items-center justify-center space-x-2">
+            <i class="fa-solid fa-clock-rotate-left"></i>
+            <span>등록된 모든 문건을 시간순 흐름에 따라 조회하는 타임라인 페이지입니다.</span>
+        </div>
+    </header>
+
+    <main class="flex-1 max-w-4xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-10 flex flex-col space-y-8">
+        
+        <div class="bg-white p-6 rounded-3xl shadow-sm border border-slate-200 space-y-4">
+            <div class="flex flex-col sm:flex-row gap-4 justify-between items-center">
+                <div class="relative w-full sm:w-80">
+                    <span class="absolute inset-y-0 left-0 flex items-center pl-4 text-slate-400">
+                        <i class="fa-solid fa-magnifying-glass"></i>
+                    </span>
+                    <input type="text" id="timelineSearch" placeholder="타임라인 문서 검색..." oninput="timelineApp.handleSearch()" 
+                           class="w-full pl-11 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-amber-500 text-sm transition">
+                </div>
+                <div class="flex items-center gap-3 w-full sm:w-auto justify-end">
+                    <select id="sortOrder" onchange="timelineApp.handleSortChange()" class="px-4 py-3 bg-slate-50 border border-slate-200 rounded-xl text-sm font-medium focus:outline-none focus:ring-2 focus:ring-amber-500">
+                        <option value="desc">최신순 정렬 (Newest)</option>
+                        <option value="asc">과거순 정렬 (Oldest)</option>
+                    </select>
+                </div>
+            </div>
+            <div class="flex items-center justify-between pt-2 border-t border-slate-100 text-xs text-slate-500 font-medium">
+                <span id="timelineCountDisplay">총 0개의 기록</span>
+                <span class="text-amber-600 font-bold"><i class="fa-solid fa-database mr-1"></i>./data/archive-data.json 연동됨</span>
+            </div>
+        </div>
+
+        <div class="relative pl-6 sm:pl-8 border-l-2 border-amber-500 space-y-8 my-4" id="timelineContainer">
+            <!-- 동적 타임라인 노드 삽입 -->
+        </div>
+
+        <!-- 상세 보기 모달 -->
+        <div id="detailModal" class="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-white rounded-3xl max-w-3xl w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+                <div class="p-6 bg-slate-900 text-white flex justify-between items-center">
+                    <div class="flex items-center space-x-3">
+                        <span id="detailCategoryBadge" class="px-3 py-1 bg-amber-500 text-slate-950 font-bold text-xs rounded-full">논평</span>
+                        <span id="detailTopicBadge" class="px-3 py-1 bg-slate-800 text-slate-300 font-medium text-xs rounded-full border border-slate-700">국민주권</span>
+                    </div>
+                    <div class="flex items-center space-x-2">
+                        <button id="ttsButton" onclick="timelineApp.toggleSpeech()" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs rounded-xl transition flex items-center space-x-1.5">
+                            <i id="ttsIcon" class="fa-solid fa-volume-high"></i>
+                            <span id="ttsText">음성 듣기</span>
+                        </button>
+                        <button onclick="timelineApp.closeDetailModal()" class="text-slate-400 hover:text-white p-2 text-lg">
+                            <i class="fa-solid fa-xmark"></i>
+                        </button>
+                    </div>
+                </div>
+                <div class="p-8 overflow-y-auto custom-scrollbar flex-1 space-y-6">
+                    <div>
+                        <h2 id="detailTitle" class="text-2xl sm:text-3xl font-black text-slate-900 leading-snug"></h2>
+                        <div class="flex items-center justify-between mt-2">
+                            <p id="detailDate" class="text-xs text-slate-500 font-medium"></p>
+                            <span id="detailFileType" class="text-xs font-bold px-2.5 py-0.5 bg-slate-100 text-slate-700 rounded">TXT</span>
+                        </div>
+                    </div>
+                    <hr class="border-slate-100">
+                    <div id="detailBody" class="serif-font text-slate-700 leading-relaxed text-base sm:text-lg whitespace-pre-wrap"></div>
+                </div>
+                <div class="p-4 bg-slate-50 border-t border-slate-200 flex flex-wrap justify-between items-center gap-3">
+                    <div class="flex items-center space-x-2">
+                        <button id="modalLikeBtn" onclick="timelineApp.toggleLikeCurrent()" class="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-200 font-bold text-sm rounded-xl transition flex items-center space-x-2">
+                            <i class="fa-solid fa-heart"></i>
+                            <span id="modalLikeCountText">좋아요 (0)</span>
+                        </button>
+                        <button onclick="timelineApp.downloadCurrentDetail()" class="px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm rounded-xl transition flex items-center space-x-2">
+                            <i class="fa-solid fa-download"></i><span>다운로드</span>
+                        </button>
+                    </div>
+                    <div class="flex space-x-3">
+                        <button onclick="timelineApp.copyDetailContent()" class="px-4 py-2.5 bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-sm rounded-xl transition flex items-center space-x-2">
+                            <i class="fa-solid fa-copy"></i><span>내용 복사</span>
+                        </button>
+                        <button onclick="timelineApp.closeDetailModal()" class="px-5 py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold text-sm rounded-xl transition">
+                            닫기
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 알림 모달 -->
+        <div id="messageModal" class="fixed inset-0 bg-slate-900/40 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+            <div class="bg-white rounded-2xl max-w-sm w-full p-6 text-center space-y-4 shadow-xl">
+                <div id="msgIcon" class="text-4xl text-amber-500"><i class="fa-solid fa-circle-exclamation"></i></div>
+                <h4 id="msgTitle" class="font-bold text-lg text-slate-900">알림</h4>
+                <p id="msgText" class="text-sm text-slate-600"></p>
+                <button onclick="timelineApp.closeMessageModal()" class="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-bold rounded-xl text-sm transition">확인</button>
+            </div>
+        </div>
+    </main>
+
+    <!-- 푸터 -->
+    <footer class="bg-slate-900 text-slate-400 py-8 border-t border-slate-800 mt-auto">
+        <div class="max-w-7xl mx-auto px-4 text-center space-y-2 text-xs">
+            <p class="font-bold text-slate-300">자유와국민주권수호단</p>
+            <p>대한민국의 자유와 헌법적 가치, 그리고 국민주권을 수호하기 위한 공식 논설 및 기록 보관소입니다.</p>
+            <p class="text-slate-500 pt-2">JAJUDAN Timeline Archive, All Rights Reserved.</p>
+        </div>
+    </footer>
+
+    <script>
+        class TimelineArchiveApp {
+            constructor() {
+                this.defaultItems = [
+                    {
+                        id: 1,
+                        category: '성명',
+                        topic: '국민주권',
+                        title: '대한민국 헌정 질서 수호를 위한 국민주권 선언문',
+                        body: '자유와국민주권수호단은 대한민국의 주권이 국민에게 있음을 엄숙히 선언하며, 민주주의의 근간을 훼손하는 모든 시도에 맞서 끝까지 국민주권을 수호할 것입니다.',
+                        date: '2026-03-01',
+                        fileType: 'TXT',
+                        likes: 24,
+                        downloads: 42
+                    },
+                    {
+                        id: 2,
+                        category: '논평',
+                        topic: '국방안보',
+                        title: '국가 안보 태세 확립과 굳건한 방위 역량 촉구 논평',
+                        body: '엄중한 국제 정세 속에서 대한민국의 안보 주권과 평화를 지키기 위해서는 빈틈없는 방위 역량과 확고한 동맹 기조가 필수적입니다.',
+                        date: '2026-03-10',
+                        fileType: 'HTML',
+                        likes: 15,
+                        downloads: 30
+                    }
+                ];
+                this.items = [];
+                this.filteredItems = [];
+                this.activeDetailId = null;
+                this.isSpeaking = false;
+
+                this.loadExternalArchiveData();
+            }
+
+            async loadExternalArchiveData() {
+                let serverItems = [];
+                try {
+                    // GitHub 레파지토리의 /data/archive-data.json 경로와 직접 연동
+                    const response = await fetch('./data/archive-data.json?t=' + new Date().getTime());
+                    if (response.ok) {
+                        const data = await response.json();
+                        if (Array.isArray(data)) {
+                            serverItems = data;
+                        }
+                    }
+                } catch (e) {
+                    console.warn("외부 데이터(./data/archive-data.json) 로드 실패, 기본 데이터로 대체합니다.", e);
+                }
+
+                if (serverItems.length === 0) {
+                    serverItems = this.defaultItems;
+                }
+
+                // 메인 페이지(A) 및 자료실과 동일한 좋아요/다운로드 로컬 저장소 동기화 연동
+                const localSaved = localStorage.getItem('zajudan_archive_items');
+                let localMap = {};
+                if (localSaved) {
+                    try {
+                        const parsedLocal = JSON.parse(localSaved);
+                        parsedLocal.forEach(item => {
+                            localMap[item.id] = {
+                                likes: item.likes || 0,
+                                downloads: item.downloads || 0
+                            };
+                        });
+                    } catch(err) {
+                        console.error("로컬 데이터 파싱 실패", err);
+                    }
+                }
+
+                this.items = serverItems.map(item => {
+                    const local = localMap[item.id];
+                    return {
+                        ...item,
+                        likes: local ? Math.max(item.likes || 0, local.likes) : (item.likes || 0),
+                        downloads: local ? Math.max(item.downloads || 0, local.downloads) : (item.downloads || 0)
+                    };
+                });
+
+                this.sortAndFilterItems();
+            }
+
+            sortAndFilterItems() {
+                const query = document.getElementById('timelineSearch').value.toLowerCase();
+                const sortOrder = document.getElementById('sortOrder').value;
+
+                // 1. 검색어 필터링
+                let temp = this.items.filter(item => {
+                    return item.title.toLowerCase().includes(query) || 
+                           item.body.toLowerCase().includes(query) || 
+                           item.category.toLowerCase().includes(query) || 
+                           item.topic.toLowerCase().includes(query);
+                });
+
+                // 2. 날짜 기준 시간순 배열 (오름차순 / 내림차순)
+                temp.sort((a, b) => {
+                    const dateA = new Date(a.date || '2026-01-01');
+                    const dateB = new Date(b.date || '2026-01-01');
+                    if (sortOrder === 'asc') {
+                        return dateA - dateB; // 과거순
+                    } else {
+                        return dateB - dateA; // 최신순
+                    }
+                });
+
+                this.filteredItems = temp;
+                this.renderTimeline();
+            }
+
+            handleSearch() {
+                this.sortAndFilterItems();
+            }
+
+            handleSortChange() {
+                this.sortAndFilterItems();
+            }
+
+            renderTimeline() {
+                const container = document.getElementById('timelineContainer');
+                document.getElementById('timelineCountDisplay').innerText = `총 ${this.filteredItems.length}개의 기록`;
+                container.innerHTML = '';
+
+                if (this.filteredItems.length === 0) {
+                    container.innerHTML = `
+                        <div class="py-16 text-center bg-white rounded-3xl border border-slate-200 ml-4">
+                            <div class="text-4xl text-slate-300 mb-3"><i class="fa-solid fa-clock"></i></div>
+                            <p class="text-slate-500 font-medium text-sm">타임라인에 일치하는 기록이 없습니다.</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                this.filteredItems.forEach((item, index) => {
+                    const node = document.createElement('div');
+                    node.className = "relative group";
+                    node.innerHTML = `
+                        <!-- 타임라인 원형 마커 -->
+                        <div class="absolute -left-[31px] sm:-left-[39px] top-1.5 w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-amber-500 border-4 border-white shadow-md flex items-center justify-center text-slate-950 font-black text-xs">
+                            <i class="fa-solid fa-bookmark text-[10px]"></i>
+                        </div>
+
+                        <!-- 타임라인 카드 본문 -->
+                        <div class="bg-white rounded-3xl p-6 sm:p-7 shadow-sm border border-slate-200 hover:shadow-md transition space-y-4">
+                            <div class="flex flex-wrap items-center justify-between gap-2">
+                                <div class="flex items-center space-x-2">
+                                    <span class="px-3 py-1 bg-amber-100 text-amber-800 font-bold text-xs rounded-full">${item.category}</span>
+                                    <span class="px-3 py-1 bg-slate-100 text-slate-700 font-medium text-xs rounded-full">${item.topic}</span>
+                                    <span class="px-2.5 py-0.5 bg-slate-900 text-amber-400 font-black text-[10px] rounded">${item.fileType || 'TXT'}</span>
+                                </div>
+                                <div class="flex items-center space-x-1 text-xs font-bold text-amber-600 bg-amber-50 px-3 py-1 rounded-xl">
+                                    <i class="fa-regular fa-calendar-days mr-1"></i>
+                                    <span>${item.date}</span>
+                                </div>
+                            </div>
+
+                            <h3 class="font-black text-lg sm:text-xl text-slate-900 hover:text-amber-600 transition cursor-pointer" onclick="timelineApp.openDetail(${item.id})">
+                                ${item.title}
+                            </h3>
+
+                            <p class="serif-font text-slate-600 text-sm sm:text-base line-clamp-3 leading-relaxed">
+                                ${item.body}
+                            </p>
+
+                            <div class="pt-4 border-t border-slate-100 flex items-center justify-between">
+                                <div class="flex items-center space-x-3 text-xs text-slate-500 font-bold">
+                                    <button onclick="timelineApp.toggleLike(${item.id})" class="text-rose-500 hover:text-rose-600 flex items-center space-x-1 bg-rose-50 px-3 py-1.5 rounded-xl transition">
+                                        <i class="fa-solid fa-heart"></i>
+                                        <span>좋아요 ${item.likes || 0}</span>
+                                    </button>
+                                    <span class="text-slate-500 bg-slate-100 px-3 py-1.5 rounded-xl">
+                                        <i class="fa-solid fa-download mr-1"></i>다운로드 ${item.downloads || 0}
+                                    </span>
+                                </div>
+                                <div class="flex space-x-2">
+                                    <button onclick="timelineApp.downloadItem(${item.id})" class="px-3.5 py-2 bg-slate-100 hover:bg-amber-500 hover:text-slate-950 text-slate-700 font-bold text-xs rounded-xl transition" title="다운로드">
+                                        <i class="fa-solid fa-download"></i>
+                                    </button>
+                                    <button onclick="timelineApp.openDetail(${item.id})" class="px-4 py-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-white font-bold text-xs rounded-xl transition">
+                                        상세보기
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                    container.appendChild(node);
+                });
+            }
+
+            saveItems() {
+                localStorage.setItem('zajudan_archive_items', JSON.stringify(this.items));
+            }
+
+            toggleLike(id) {
+                const item = this.items.find(i => i.id === id);
+                if (!item) return;
+                item.likes = (item.likes || 0) + 1;
+                this.saveItems();
+                this.sortAndFilterItems();
+                if (this.activeDetailId === id) {
+                    this.updateModalLikeButton(item);
+                }
+            }
+
+            toggleLikeCurrent() {
+                if (this.activeDetailId) {
+                    this.toggleLike(this.activeDetailId);
+                }
+            }
+
+            updateModalLikeButton(item) {
+                const countText = document.getElementById('modalLikeCountText');
+                if (countText) {
+                    countText.innerText = `좋아요 (${item.likes || 0})`;
+                }
+            }
+
+            openDetail(id) {
+                const item = this.items.find(i => i.id === id);
+                if (!item) return;
+                this.activeDetailId = id;
+                this.stopSpeech();
+
+                document.getElementById('detailCategoryBadge').innerText = item.category;
+                document.getElementById('detailTopicBadge').innerText = item.topic;
+                document.getElementById('detailTitle').innerText = item.title;
+                document.getElementById('detailDate').innerText = `등록일자: ${item.date}`;
+                document.getElementById('detailFileType').innerText = item.fileType || 'TXT';
+                document.getElementById('detailBody').innerText = item.body;
+                this.updateModalLikeButton(item);
+                document.getElementById('detailModal').classList.remove('hidden');
+            }
+
+            closeDetailModal() {
+                this.stopSpeech();
+                document.getElementById('detailModal').classList.add('hidden');
+                this.activeDetailId = null;
+            }
+
+            toggleSpeech() {
+                if (!('speechSynthesis' in window)) {
+                    this.showAlert("지원 불가", "현재 브라우저가 음성 합성(TTS)을 지원하지 않습니다.");
+                    return;
+                }
+
+                if (this.isSpeaking) {
+                    this.stopSpeech();
+                } else {
+                    const title = document.getElementById('detailTitle').innerText;
+                    const body = document.getElementById('detailBody').innerText;
+                    const textToRead = `제목: ${title}. 본문 내용: ${body}`;
+                    
+                    const utterance = new SpeechSynthesisUtterance(textToRead);
+                    utterance.lang = 'ko-KR';
+                    utterance.rate = 1.0;
+                    
+                    utterance.onend = () => { this.stopSpeech(); };
+                    utterance.onerror = () => { this.stopSpeech(); };
+
+                    window.speechSynthesis.speak(utterance);
+                    this.isSpeaking = true;
+                    document.getElementById('ttsIcon').className = "fa-solid fa-stop";
+                    document.getElementById('ttsText').innerText = "음성 중지";
+                }
+            }
+
+            stopSpeech() {
+                if ('speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                }
+                this.isSpeaking = false;
+                const icon = document.getElementById('ttsIcon');
+                const text = document.getElementById('ttsText');
+                if (icon) icon.className = "fa-solid fa-volume-high";
+                if (text) text.innerText = "음성 듣기";
+            }
+
+            downloadItem(id) {
+                const item = this.items.find(i => i.id === id);
+                if (!item) return;
+
+                item.downloads = (item.downloads || 0) + 1;
+                this.saveItems();
+                this.sortAndFilterItems();
+
+                let content = `[자유와국민주권수호단 공식 아카이브 문건]\n\n제목: ${item.title}\n카테고리: ${item.category} | 주제: ${item.topic}\n파일형식: ${item.fileType || 'TXT'} | 등록일자: ${item.date}\n다운로드수: ${item.downloads}\n--------------------------------------------------\n\n${item.body}`;
+                let mimeType = 'text/plain;charset=utf-8';
+                let extension = 'txt';
+
+                if (item.fileType === 'HTML') {
+                    mimeType = 'text/html;charset=utf-8';
+                    extension = 'html';
+                    content = `<!DOCTYPE html><html lang="ko"><head><meta charset="UTF-8"><title>${item.title}</title></head><body><h1>${item.title}</h1><p>분류: ${item.category} / ${item.topic}</p><hr/><p>${item.body.replace(/\n/g, '<br>')}</p></body></html>`;
+                } else if (item.fileType === 'PDF') {
+                    extension = 'pdf';
+                    content = `%PDF-1.4\n%자유와국민주권수호단 문서\n${item.title}\n${item.body}`;
+                }
+
+                const blob = new Blob([content], { type: mimeType });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `[자주단_${item.category}]_${item.title.replace(/[\\/:*?"<>|]/g, "")}.${extension}`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }
+
+            downloadCurrentDetail() {
+                if (this.activeDetailId) this.downloadItem(this.activeDetailId);
+            }
+
+            copyDetailContent() {
+                const bodyText = document.getElementById('detailBody').innerText;
+                const titleText = document.getElementById('detailTitle').innerText;
+                const fullText = `[${titleText}]\n\n${bodyText}`;
+
+                const textArea = document.createElement("textarea");
+                textArea.value = fullText;
+                document.body.appendChild(textArea);
+                textArea.select();
+                try {
+                    document.execCommand('copy');
+                    this.showAlert("복사 완료", "클립보드에 복사되었습니다.");
+                } catch (err) {
+                    this.showAlert("복사 실패", "보안 환경으로 인해 복사에 실패했습니다.");
+                }
+                document.body.removeChild(textArea);
+            }
+
+            showAlert(title, text) {
+                document.getElementById('msgTitle').innerText = title;
+                document.getElementById('msgText').innerText = text;
+                document.getElementById('messageModal').classList.remove('hidden');
+            }
+
+            closeMessageModal() {
+                document.getElementById('messageModal').classList.add('hidden');
+            }
+        }
+
+        const timelineApp = new TimelineArchiveApp();
+    </script>
+</body>
+</html>
