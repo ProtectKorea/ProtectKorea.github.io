@@ -1,5 +1,14 @@
 [
   {
+    "id": 75,
+    "category": "자료",
+    "topic": "기타",
+    "fileType": "TXT",
+    "title": "[웹개발] 깃허브 토큰설정법",
+    "body": "제목: [웹개발] 깃허브 토큰설정법\n작성일: 2026.09.29 09:57\n\nGitHub에서 Personal Access Token(PAT)을 발급받고 필요한 권한(Scope)을 설정하는 방법을 안내해 드릴게요.\n\n이 프로젝트(관리자 전용 부동산 관리 시스템)에서 **`data/properties.json` 파일을 자동으로 생성 및 푸시(업데이트)** 하려면 레파지토리 읽기/쓰기 권한이 필요합니다.\n\n---\n\n### 1단계: GitHub 토큰 발급 페이지로 이동하기\n\n1. GitHub 웹사이트에 로그인합니다.\n2. 우측 상단의 **프로필 사진**을 클릭하고 **[Settings]** (설정)로 들어갑니다.\n3. 페이지 맨 아래 좌측 메뉴에서 **[Developer settings]** (개발자 설정)를 클릭합니다.\n4. [Personal access tokens]를 펼치고 다음 중 하나의 방식을 선택합니다.\n* **Fine-grained tokens** (권장 - 특정 레파지토리만 안전하게 지정 가능)\n* **Tokens (classic)** (기존 방식 - 사용이 직관적)\n\n\n\n---\n\n### 2단계-A: Fine-grained tokens (세분화된 토큰) 발급 방법\n\n1. **[Generate new token]** 버튼을 클릭합니다.\n2. 설정 항목 입력:\n* **Token name**: 토큰 이름 입력 (예: `saleland-admin-token`)\n* **Expiration**: 만료 기한 선택 (편의상 90일 또는 No expiration 선택)\n* **Resource owner**: 본인 계정 선택\n* **Repository access**: **`Only select repositories`** 선택 후, 아래 목록에서 `saleland.github.io` 레파지토리를 선택합니다.\n\n\n3. **Repository permissions (권한 설정)**:\n* **Contents**: `Read and write` (읽기 및 쓰기)로 설정합니다. *(이 부분이 가장 중요합니다!)*\n\n\n4. 페이지 하단의 **[Generate token]** 버튼을 누릅니다.\n5. 생성된 **토큰 문자열(ghp_... 또는 github_pat_...)을 복사**하여 안전한 곳에 보관합니다. *(이 창을 닫으면 다시 볼 수 없으므로 반드시 복사해 두세요!)*\n\n---\n\n### 2단계-B: Tokens (classic - 클래식 토큰) 발급 방법\n\n1. **[Generate new token]** -> [Generate new token (classic)]을 클릭합니다.\n2. 설정 항목 입력:\n* **Note**: 토큰 이름 입력 (예: `saleland-admin-token`)\n* **Expiration**: 만료 기한 선택\n\n\n3. **Select scopes (권한 설정)**:\n* **`repo`** (Full control of private repositories) 항목에 체크합니다. 이 체크박스 하나로 레파지토리 제어 권한이 모두 부여됩니다.\n\n\n4. 페이지 하단의 **[Generate token]** 버튼을 누릅니다.\n5. 생성된 **토큰 문자열을 복사**합니다.\n\n---\n\n### 3단계: 관리자 시스템에 적용하기\n\n복사한 토큰을 열어두신 관리자 전용 부동산 관리 시스템(`admin.html`)의 **[GitHub API 자동 연동 설정]** 란에 입력하시면 됩니다.\n\n* **GitHub 계정명**: `saleland` (본인 계정명)\n* **레파지토리명**: `saleland.github.io`\n* **GitHub Personal Access Token**: 방금 복사한 토큰(`ghp_...` 또는 `github_pat_...`) 붙여넣기\n* **[설정 저장]** 클릭 후 바로 [GitHub 레파지토리로 바로 푸시]를 테스트해 보세요!",
+    "date": "2026-09-28"
+  },
+  {
     "id": 74,
     "category": "자료",
     "topic": "정치",
